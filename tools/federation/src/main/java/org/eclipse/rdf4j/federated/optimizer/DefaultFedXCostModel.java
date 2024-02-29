@@ -19,9 +19,14 @@ import org.eclipse.rdf4j.federated.algebra.ExclusiveTupleExpr;
 import org.eclipse.rdf4j.federated.algebra.FedXService;
 import org.eclipse.rdf4j.federated.algebra.NJoin;
 import org.eclipse.rdf4j.federated.algebra.NUnion;
+import org.eclipse.rdf4j.federated.algebra.StatementSource;
 import org.eclipse.rdf4j.federated.algebra.StatementSourcePattern;
+import org.eclipse.rdf4j.federated.optimizer.VoIDWatcher.DsVoidStats;
+import org.eclipse.rdf4j.federated.optimizer.VoIDWatcher.DsVoidStats.VoidStat;
 import org.eclipse.rdf4j.federated.util.QueryAlgebraUtil;
 import org.eclipse.rdf4j.federated.util.QueryStringUtil;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.query.algebra.ArbitraryLengthPath;
 import org.eclipse.rdf4j.query.algebra.BindingSetAssignment;
 import org.eclipse.rdf4j.query.algebra.Extension;
@@ -41,6 +46,13 @@ public class DefaultFedXCostModel implements FedXCostModel {
 	public static DefaultFedXCostModel INSTANCE = new DefaultFedXCostModel();
 
 	private static final Logger log = LoggerFactory.getLogger(DefaultFedXCostModel.class);
+
+	/*
+	 * Proposal:
+	 * 1. Background worker(s) periodically fetch VoID descriptions from registered endpoints
+	 * 2. Feed VoID description into estimates for patterns before (e.g. fixed subject)
+	 * 3. Start with e.g. estimateCost((StatementSourcePattern)
+	 */
 
 	@Override
 	public double estimateCost(TupleExpr tupleExpr, Set<String> joinVars) {
@@ -204,7 +216,6 @@ public class DefaultFedXCostModel implements FedXCostModel {
 	}
 
 	private double estimateCost(StatementSourcePattern stmt, Set<String> joinVars) {
-
 		/* currently the cost is the number of free vars that are executed in the join */
 
 		int count = 100;
@@ -213,6 +224,62 @@ public class DefaultFedXCostModel implements FedXCostModel {
 				count++;
 			}
 		}
+
+		// TODO - combine with count above
+		int voidScore = 0;
+
+		Value subject = stmt.getSubjectVar().getValue();
+		Value predicate = stmt.getPredicateVar().getValue();
+		Value object = stmt.getObjectVar().getValue();
+
+		VoIDWatcher watcher = stmt.getQueryInfo().getFederationContext().getvoIDWatcher();
+		// <- access to endpoints which will be queried
+		log.debug("Considering statement {}", stmt);
+		for (StatementSource source : stmt.getStatementSources()) {
+			log.debug("Considering source {}", source.getEndpointID());
+			DsVoidStats stats = watcher.getEndpointStats(source.getEndpointID());
+
+			if (stats == null) {
+				log.debug("No stats available for {}", source.getEndpointID());
+				// TODO - apply score anyway?
+				// Maybe 0.5 max-int
+				continue;
+			}
+
+			if (predicate != null) {
+				log.debug("Predicate known: {}", predicate);
+				VoidStat stat = stats.getPropStatsFor((IRI) predicate);
+				if (stat == null) {
+					log.debug("No stats available for predicate {}", predicate);
+					// TODO - apply score anyway?
+					// Maybe no result? So low score (1?)
+					continue;
+				}
+				// TODO - lower of unbound vars
+				if (subject == null) {
+					voidScore += stat.subjects;
+				}
+				if (object == null) {
+					voidScore += stat.objects;
+				}
+			} else {
+				log.debug("Predicate unknown, using triple count");
+				VoidStat stat = stats.getDefaultGraphStats();
+				if (subject == null && object == null) {
+					voidScore += stat.triples;
+				}
+				else if (subject == null) {
+					voidScore += stat.subjects;
+				} else {
+					// TODO - extend query to retrieve total count of predicates (COUNT of void:property predicate)
+				}
+			}
+		}
+		log.debug("VoiD score: {}", voidScore);
+		// get an endpoint
+		// stmt.getQueryInfo().getFederationContext().getEndpointManager().getEndpoint(null);
+
+
 
 		return count;
 	}

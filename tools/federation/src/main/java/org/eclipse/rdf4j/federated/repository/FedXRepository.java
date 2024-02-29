@@ -96,6 +96,9 @@ public class FedXRepository extends SailRepository {
 
 		queryManager.init(this, federationContext);
 		fedxServiceResolver.initialize();
+
+		// TODO - init style/place wrong
+		federationContext.getvoIDWatcher().start();
 	}
 
 	@Override
@@ -105,6 +108,7 @@ public class FedXRepository extends SailRepository {
 		} catch (FedXException e) {
 			throw new SailException(e);
 		}
+		federationContext.getvoIDWatcher().stop(true);
 		super.shutDownInternal();
 	}
 

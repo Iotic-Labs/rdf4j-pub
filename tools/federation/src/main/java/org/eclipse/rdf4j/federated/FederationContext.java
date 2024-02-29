@@ -41,6 +41,8 @@ public class FederationContext {
 
 	private final SourceSelectionCache sourceSelectionCache;
 
+	private final VoIDWatcher voIDWatcher;
+
 	public FederationContext(FederationManager manager, EndpointManager endpointManager, QueryManager queryManager,
 			DelegateFederatedServiceResolver federatedServiceResolver,
 			Monitoring monitoring, FedXConfig fedXConfig) {
@@ -52,6 +54,7 @@ public class FederationContext {
 		this.monitoring = monitoring;
 		this.fedXConfig = fedXConfig;
 		this.sourceSelectionCache = createSourceSelectionCache();
+		this.voIDWatcher = new VoIDWatcher(endpointManager, 5000);
 	}
 
 	public FedX getFederation() {
@@ -84,6 +87,10 @@ public class FederationContext {
 
 	public SourceSelectionCache getSourceSelectionCache() {
 		return this.sourceSelectionCache;
+	}
+
+	public VoIDWatcher getvoIDWatcher() {
+		return this.voIDWatcher;
 	}
 
 	/**
